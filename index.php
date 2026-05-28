@@ -15,6 +15,14 @@ $categories = $inventory->getCategories();
 
 $isLoggedIn = $auth->isLoggedIn();
 $isAdmin = $auth->isAdmin();
+
+// Calculate total cart items
+$cartCount = 0;
+if (isset($_SESSION['cart']) && !empty($_SESSION['cart'])) {
+    foreach ($_SESSION['cart'] as $qty) {
+        $cartCount += $qty;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -106,6 +114,10 @@ $isAdmin = $auth->isAdmin();
                     <a href="admin_dashboard.php" class="btn btn-secondary" style="padding: 8px 16px;">Admin Panel</a>
                 <?php endif; ?>
                 
+                <?php if(!$isAdmin): ?>
+                    <a href="cart.php" class="btn btn-secondary" style="padding: 8px 16px; width: auto; background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.3); color: #c4b5fd;">🛒 Cart (<?php echo $cartCount; ?>)</a>
+                <?php endif; ?>
+
                 <?php if($isLoggedIn): ?>
                     <span>Hi, <?php echo htmlspecialchars($_SESSION['username']); ?>!</span>
                     <?php if(!$isAdmin): ?>
@@ -123,6 +135,10 @@ $isAdmin = $auth->isAdmin();
             <h1>Unleash Next-Gen Power</h1>
             <p>Elevate your lifestyle with our exclusive, premium gadgets.</p>
         </div>
+
+        <?php if(isset($_GET['msg']) && $_GET['msg'] == 'outofstock'): ?>
+            <div class="alert alert-danger">Sorry, you cannot add more than the available stock quantity!</div>
+        <?php endif; ?>
 
         <form class="search-bar" method="GET">
             <input type="text" name="search" class="form-control" placeholder="Search for gadgets..." value="<?php echo htmlspecialchars($search); ?>">
@@ -156,7 +172,10 @@ $isAdmin = $auth->isAdmin();
                     <?php if($isAdmin): ?>
                         <button class="btn btn-secondary" disabled title="Admins cannot place orders. Please use a customer account.">Admin Cannot Order</button>
                     <?php elseif($item['quantity'] > 0): ?>
-                        <a href="checkout.php?id=<?php echo $item['id']; ?>" class="btn btn-primary">Order Now</a>
+                        <div style="display: flex; gap: 10px; width: 100%;">
+                            <a href="checkout.php?id=<?php echo $item['id']; ?>" class="btn btn-primary" style="flex: 1; padding: 10px; font-size: 0.9rem; margin-top: 0;">Buy Now</a>
+                            <a href="cart_action.php?action=add&id=<?php echo $item['id']; ?>" class="btn btn-secondary" style="padding: 10px 14px; font-size: 0.9rem; margin-top: 0; background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.2); color: #c4b5fd;" title="Add to Cart">🛒</a>
+                        </div>
                     <?php else: ?>
                         <button class="btn btn-secondary" disabled>Out of Stock</button>
                     <?php endif; ?>

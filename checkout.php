@@ -1,4 +1,5 @@
 <?php
+// checkout.php
 session_start();
 require_once 'Auth.php';
 require_once 'Inventory.php';
@@ -15,18 +16,43 @@ if ($auth->isAdmin()) {
     exit();
 }
 
-if (!isset($_GET['id'])) {
-    header("Location: index.php");
-    exit();
-}
-
-$itemId = (int)$_GET['id'];
 $inventory = new Inventory();
-$item = $inventory->getItemById($itemId);
+$checkoutItems = [];
+$totalPrice = 0.00;
+$singleItemId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-if (!$item) {
-    header("Location: index.php");
-    exit();
+if ($singleItemId > 0) {
+    // Single Item Checkout
+    $item = $inventory->getItemById($singleItemId);
+    if (!$item || $item['quantity'] <= 0) {
+        header("Location: index.php");
+        exit();
+    }
+    $item['checkout_qty'] = 1;
+    $item['subtotal'] = $item['price'];
+    $totalPrice = $item['price'];
+    $checkoutItems[] = $item;
+} else {
+    // Cart-wide Checkout
+    if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
+        header("Location: cart.php");
+        exit();
+    }
+    
+    foreach ($_SESSION['cart'] as $id => $qty) {
+        $item = $inventory->getItemById($id);
+        if ($item) {
+            $item['checkout_qty'] = $qty;
+            $item['subtotal'] = $item['price'] * $qty;
+            $totalPrice += $item['subtotal'];
+            $checkoutItems[] = $item;
+        }
+    }
+    
+    if (empty($checkoutItems)) {
+        header("Location: cart.php");
+        exit();
+    }
 }
 
 // Generate CSRF Token
@@ -46,18 +72,26 @@ $csrf_token = $auth->generateCSRFToken();
             gap: 30px;
             margin-top: 20px;
         }
+        @media (max-width: 900px) {
+            .checkout-grid {
+                grid-template-columns: 1fr;
+            }
+        }
         .payment-card {
-            background: white;
+            background: var(--surface);
+            backdrop-filter: blur(16px);
             padding: 30px;
             border-radius: 16px;
             box-shadow: var(--shadow);
+            border: 1px solid var(--border);
         }
         .order-summary {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(10px);
+            background: var(--surface);
+            backdrop-filter: blur(16px);
             padding: 30px;
             border-radius: 16px;
             box-shadow: var(--shadow);
+            border: 1px solid var(--border);
             height: fit-content;
         }
         .card-visual {
@@ -68,6 +102,7 @@ $csrf_token = $auth->generateCSRFToken();
             margin-bottom: 30px;
             position: relative;
             overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
         }
         .card-visual::after {
             content: '';
@@ -104,7 +139,7 @@ $csrf_token = $auth->generateCSRFToken();
             justify-content: space-between;
             margin-bottom: 15px;
             padding-bottom: 15px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border);
         }
         .total-row {
             display: flex;
@@ -114,18 +149,26 @@ $csrf_token = $auth->generateCSRFToken();
             color: var(--primary);
             margin-top: 10px;
         }
+        .checkout-items-list {
+            max-height: 240px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding-right: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="dashboard-header">
             <h1>Secure Checkout</h1>
-            <a href="index.php" class="btn btn-secondary">Cancel</a>
+            <a href="<?php echo ($singleItemId > 0) ? 'index.php' : 'cart.php'; ?>" class="btn btn-secondary">Cancel</a>
         </div>
 
         <div class="checkout-grid">
+            <!-- Payment Form -->
             <div class="payment-card">
                 <h3>Payment Information</h3>
+                <br>
                 <div class="card-visual">
                     <div style="font-size: 1.2rem; font-weight: 700;">PREMIUM CARD</div>
                     <div class="card-number">**** **** **** 4242</div>
@@ -137,55 +180,65 @@ $csrf_token = $auth->generateCSRFToken();
 
                 <form action="order.php" method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                    <input type="hidden" name="item_id" value="<?php echo $itemId; ?>">
+                    <?php if ($singleItemId > 0): ?>
+                        <input type="hidden" name="item_id" value="<?php echo $singleItemId; ?>">
+                    <?php endif; ?>
                     
                     <div class="form-group">
                         <label>Cardholder Name</label>
-                        <input type="text" placeholder="Full Name as on card" required>
+                        <input type="text" class="form-control" placeholder="Full Name as on card" required>
                     </div>
                     
                     <div class="form-group">
                         <label>Card Number</label>
-                        <input type="text" placeholder="0000 0000 0000 0000" maxlength="19" required>
+                        <input type="text" class="form-control" placeholder="0000 0000 0000 0000" maxlength="19" required>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label>Expiry Date</label>
-                            <input type="text" placeholder="MM / YY" maxlength="5" required>
+                            <input type="text" class="form-control" placeholder="MM / YY" maxlength="5" required>
                         </div>
                         <div class="form-group">
                             <label>CVV</label>
-                            <input type="password" placeholder="***" maxlength="3" required>
+                            <input type="password" class="form-control" placeholder="***" maxlength="3" required>
                         </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px; font-size: 1.1rem; padding: 15px;">
-                        Pay $<?php echo number_format($item['price'], 2); ?> Now
+                        Pay $<?php echo number_format($totalPrice, 2); ?> Now
                     </button>
-                    <p style="text-align: center; font-size: 0.8rem; color: #666; margin-top: 15px;">
+                    <p style="text-align: center; font-size: 0.8rem; color: var(--text-secondary); margin-top: 15px;">
                         🔒 Your payment is secured with 256-bit encryption.
                     </p>
                 </form>
             </div>
 
+            <!-- Order Summary -->
             <div class="order-summary">
                 <h3>Order Summary</h3>
-                <div style="display: flex; gap: 15px; margin-bottom: 25px;">
-                    <img src="<?php echo htmlspecialchars($item['image_url']); ?>" style="width: 80px; height: 80px; border-radius: 12px; object-fit: cover;">
-                    <div>
-                        <div style="font-weight: 700;"><?php echo htmlspecialchars($item['name']); ?></div>
-                        <div style="font-size: 0.9rem; color: #666;"><?php echo htmlspecialchars($item['category']); ?></div>
-                    </div>
+                <br>
+                
+                <div class="checkout-items-list">
+                    <?php foreach ($checkoutItems as $item): ?>
+                        <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+                            <img src="<?php echo htmlspecialchars($item['image_url']); ?>" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border);">
+                            <div style="flex-grow: 1;">
+                                <div style="font-weight: 700; font-size: 0.95rem;"><?php echo htmlspecialchars($item['name']); ?></div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);"><?php echo $item['checkout_qty']; ?> × $<?php echo number_format($item['price'], 2); ?></div>
+                            </div>
+                            <div style="font-weight: 700;">$<?php echo number_format($item['subtotal'], 2); ?></div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
 
                 <div class="summary-item">
                     <span>Subtotal</span>
-                    <span>$<?php echo number_format($item['price'], 2); ?></span>
+                    <span>$<?php echo number_format($totalPrice, 2); ?></span>
                 </div>
                 <div class="summary-item">
                     <span>Shipping</span>
-                    <span style="color: #10B981;">FREE</span>
+                    <span style="color: var(--secondary);">FREE</span>
                 </div>
                 <div class="summary-item">
                     <span>Tax (GST/VAT)</span>
@@ -194,7 +247,7 @@ $csrf_token = $auth->generateCSRFToken();
                 
                 <div class="total-row">
                     <span>Total</span>
-                    <span>$<?php echo number_format($item['price'], 2); ?></span>
+                    <span>$<?php echo number_format($totalPrice, 2); ?></span>
                 </div>
             </div>
         </div>
